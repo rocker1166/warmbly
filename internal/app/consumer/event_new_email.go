@@ -152,7 +152,16 @@ func extractHeaderValue(msg *models.EmailMessageStoreData, headerName string) st
 
 // handleWarmupEmail handles a detected warmup email
 func (s *JobsService) handleWarmupEmail(ctx context.Context, e *models.JobEventNewEmail, tokenStr string) (bool, error) {
-	if s.WarmupRepo == nil {
+	if s.WarmupRepo == nil || e.Message == nil {
+		return false, nil
+	}
+
+	// The sender's own copy of an outgoing warmup mail carries the token too.
+	// Now that Sent folders sync it arrives here under the SENDER's account,
+	// where the recipient check fails and every warmup send cost its own
+	// sender an invalid-token strike; three strikes blocked the mailbox for a
+	// month. A copy in Sent is never a delivery to verify.
+	if models.NormalizeFolder(e.Message.Folder, e.Message.Flags) == models.FolderSent {
 		return false, nil
 	}
 
@@ -167,6 +176,12 @@ func (s *JobsService) handleWarmupEmail(ctx context.Context, e *models.JobEventN
 	if err != nil || token == nil {
 		// Token not found/expired → suspicious
 		s.applyInvalidWarmupAttempt(ctx, e.Message.EmailID, tokenStr, 5)
+		return false, nil
+	}
+
+	// Our own token seen from any other folder (All Mail, a label) is the
+	// same outgoing copy, not a forgery.
+	if token.SenderAccountID == e.Message.EmailID {
 		return false, nil
 	}
 
