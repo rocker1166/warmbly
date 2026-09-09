@@ -82,7 +82,7 @@ cli-check:
 fmt:
 	gofmt -w ./cmd ./internal
 
-lint: check-migrations join-check
+lint: check-migrations join-check check-dockerfiles
 	./scripts/check-forms-mirror.sh
 	$(GO_BIN)/golangci-lint run --timeout=5m
 
@@ -91,6 +91,13 @@ lint: check-migrations join-check
 # documented ship signal covers it.
 check-migrations:
 	@./scripts/check-migrations.sh
+
+# A COPY naming a path no longer in the repo builds green everywhere until it
+# lands: nothing in `make lint` or the CI workflow builds an image, and
+# build-push.yml runs only on push to main. Runs in a second; part of `make
+# lint` for the same reason check-migrations is.
+check-dockerfiles:
+	@./scripts/check-dockerfiles.sh
 
 proto:
 	@command -v protoc >/dev/null || (echo "protoc not found in PATH"; exit 1)

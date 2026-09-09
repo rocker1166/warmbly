@@ -100,6 +100,9 @@ type ContactCampaignProgress struct {
 	// FailureReason is the worker's reason for the last failed send, set only
 	// when Status is "failed".
 	FailureReason string `json:"failure_reason,omitempty"`
+	// Sender is the mailbox address this lead's whole sequence sends from,
+	// fixed when its first email went out. Empty until then.
+	Sender string `json:"sender,omitempty"`
 }
 
 // Lead status constants for ContactCampaignProgress.Status.

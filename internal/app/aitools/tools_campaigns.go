@@ -526,6 +526,10 @@ func (d Deps) listCampaignLeads(ctx context.Context, inv Invocation, args json.R
 			row["opened"] = lp.Opened
 			row["replied"] = lp.Replied
 			row["current_step"] = lp.CurrentStep
+			if lp.Sender != "" {
+				// The mailbox this lead's whole sequence sends from.
+				row["sender"] = lp.Sender
+			}
 			if lp.LastActivityAt != nil {
 				row["last_activity_at"] = lp.LastActivityAt
 			}

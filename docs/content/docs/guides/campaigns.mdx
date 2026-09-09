@@ -40,7 +40,7 @@ Pick mailboxes in **Sending accounts** three ways, and the first two combine:
 Sending accounts always resolve inside the campaign's own workspace. If you belong to more than one workspace, a tag you reuse across them still only picks up mailboxes belonging to the workspace that owns the campaign, so one workspace's sending reputation, daily caps, and warmup are never spent on another's traffic.
 
 <Callout type="info" title="Follow-ups stay on the same mailbox">
-Each mailbox stays within its own daily limit, and follow-ups always send from the mailbox that sent the first email to that contact, so threads stay consistent.
+Rotation chooses a mailbox for a lead's **first** email, and that mailbox sends the rest of that lead's sequence. Three emails from three addresses is not a conversation, and a reply belongs in the mailbox the contact was written to from.
 </Callout>
 
 | Rotation | Behavior |
@@ -49,7 +49,20 @@ Each mailbox stays within its own daily limit, and follow-ups always send from t
 | Round-robin | Cycles in order: `A`, `B`, `C`, back to `A` |
 | Weighted | Sends more from healthier, higher-limit mailboxes |
 
-**ESP matching** optionally aligns sender and recipient providers (Gmail to Gmail). **Prefer same** falls back to any mailbox when no same-provider one is free; **Strict same** makes the contact wait instead. An unknown recipient provider never blocks a send.
+Whichever mode you pick, it decides which mailbox **starts** a lead. Every mailbox still stays inside its own daily cap and minimum gap, so a campaign's volume is the sum of its mailboxes' budgets as always.
+
+The Leads tab shows each lead's mailbox in its **Sender** column, and a contact's Activity tab shows it beside their progress. A lead has none until its first email goes out.
+
+**ESP matching** optionally aligns sender and recipient providers (Gmail to Gmail). **Prefer same** falls back to any mailbox when no same-provider one is free; **Strict same** makes the contact wait instead. An unknown recipient provider never blocks a send. Like rotation, it applies to a lead's first email: a follow-up goes out from the mailbox the contact already knows.
+
+### When a lead's mailbox is busy, or gone
+
+Two things can happen to a lead's mailbox, and Warmbly treats them differently:
+
+- **Busy**: it has used its daily budget, or it is outside its own sending hours. The lead waits for it, and the rest of the campaign keeps sending from the mailboxes that are free. Nothing is lost: the lead sends when the mailbox is next available, and the activity log notes the wait once a day.
+- **Gone**: it was disconnected, removed from the campaign's sending accounts, sent to rest, held by warmup health, or its domain is failing authentication. Waiting would leave the contact silent for days, so the lead moves to another mailbox in the pool and the campaign's activity log records the change.
+
+Removing a mailbox from **Sending accounts** therefore hands its in-flight leads to the remaining mailboxes as each of them reaches its next step. Adding a mailbox never moves an existing lead; it picks up new ones.
 
 ## Sending limits
 

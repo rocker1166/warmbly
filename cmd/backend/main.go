@@ -290,6 +290,7 @@ func main() {
 	var emailMessageMapForHandler repository.EmailMessageMapRepository
 	var emailSyncStateRepository repository.EmailSyncStateRepository
 	var trackedLinkRepository repository.TrackedLinkRepository
+	var customDomainRepository repository.CustomDomainRepository
 	// instanceSettings and the health registry are built after the handler
 	// dependencies, so the pool is hoisted out of the connection block.
 	var instanceSettings instancesettings.Service
@@ -602,6 +603,7 @@ func main() {
 		)
 		emailMessageMapForHandler = repository.NewEmailMessageMapRepository(primaryDB)
 		trackedLinkRepository = repository.NewTrackedLinkRepository(primaryDB.Pool)
+		customDomainRepository = repository.NewCustomDomainRepository(primaryDB.Pool)
 		instanceChecksDB = primaryDB.Pool
 		instanceSettings = instancesettings.NewService(instancesettings.NewStore(primaryDB.Pool))
 		bootstrapInstanceSettings(ctx, instanceSettings)
@@ -1983,6 +1985,7 @@ func main() {
 		EmailMessageMap:        emailMessageMapForHandler,
 		EmailSyncState:         emailSyncStateRepository,
 		TrackedLinks:           trackedLinkRepository,
+		CustomDomains:          customDomainRepository,
 		WebsiteTrackingService: websiteTrackingService,
 		UserRepo:               userRepoForHandler,
 		OrgRepo:                organizationRepoForHandler,

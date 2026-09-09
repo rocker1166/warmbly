@@ -93,9 +93,8 @@ Newer builds return the invite-only refusal with its own machine code, `registra
 | `tracking` exits immediately with `Bind for 0.0.0.0:3000 failed: port is already allocated` | Something else on the host owns port `3000`, a very common default. Set `TRACKING_PORT=3001` in `.env`, re-run `make up`, and point your reverse proxy's tracking host at the new port |
 | The backend restart-loops with `duplicate migration file` | Two migrations on the branch share a version, which stops golang-migrate before a single one runs. Renumber the one that has not been released yet to the next free version and re-deploy. `make check-migrations` reports it, and CI runs the same check on every pull request. See [adding a migration](/development/local-development/#adding-a-migration) |
 | Seeding fails with `no migration found for version N` | The seed image is older than your schema. Re-run with `--build` |
-| Worker `install_state: error` | Test connection first (is the SSH key in `authorized_keys`?), then read `last_error` and Logs on the worker's detail page |
 | A whole workspace stopped sending and its banner says suspended | Its abuse posture reached `suspended`. Open the org in the admin panel, read the findings in the **Abuse posture** panel, then retract the ones that are wrong or set the posture directly. See [workspace abuse posture](/development/accounts-and-access/#workspace-abuse-posture) |
-| Worker heartbeat offline | Can the VPS reach the backend URL, NATS or Kafka, and Redis? Is the container running (Live status)? |
+| Worker heartbeat offline | Nothing connects to a node, so this is always diagnosed on the machine itself: `systemctl status warmbly-worker`, then check it can reach the backend URL, NATS or Kafka, and Redis. `warmblyctl fleet show <id>` gives the last time it was seen |
 
 ## Recovery
 

@@ -112,6 +112,12 @@ func Run(
 	// the secret token in the query is the capability.
 	r.GET("/invitations/lookup", h.PreviewInvitation)
 
+	// On-demand TLS gate for the reverse proxy in front of this instance
+	// (Caddy's `ask`). Unauthenticated because the proxy has no credential to
+	// present and the answer is already public: the CNAME that makes a
+	// hostname interesting points here in public DNS.
+	r.GET("/tls/authorize", h.AuthorizeTLSDomain)
+
 	// Internal backend-to-backend endpoints. Workers call these instead of
 	// touching Postgres directly, per the no-direct-data-services rule in
 	// CLAUDE.md. Auth: shared bearer token (INTERNAL_API_TOKEN).

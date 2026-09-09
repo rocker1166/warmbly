@@ -225,7 +225,7 @@ func (h *Handler) InviteMember(c *gin.Context) {
 
 	// Send invitation email
 	if h.EmailNotificationService != nil {
-		subject := fmt.Sprintf("You've been invited to join %s on %s", orgName, templates.CompanyName)
+		subject := fmt.Sprintf("You've been invited to join %s on %s", orgName, templates.CompanyName())
 		acceptURL := config.GetInviteURL(inv.Token)
 		// GenerateInvitationHTML reports its own render errors to Sentry.
 		if body, gerr := templates.GenerateInvitationHTML(inviterName, orgName, acceptURL); gerr == nil {

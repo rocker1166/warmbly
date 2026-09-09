@@ -51,6 +51,7 @@ import type APIKey from "@/lib/api/models/app/apikeys/APIKey";
 import CreateKeyModal from "./_components/CreateKeyModal";
 import KeyDetailDrawer from "./_components/KeyDetailDrawer";
 import { StackedBars } from "./_components/Sparkline";
+import useBrand from "@/hooks/useBrand";
 
 export default function APIKeysPage() {
     const canManage = usePermission("MANAGE_API_KEYS");
@@ -256,7 +257,10 @@ function StatusPill({ status }: { status: APIKey["status"] }) {
 }
 
 function CodeSnippet({ prefix }: { prefix: string }) {
-    const snippet = `curl https://api.warmbly.com/v1/campaigns \\
+    // This instance's own API base, not the hosted one: a self-hoster copying
+    // the example was being handed a curl aimed at somebody else's server.
+    const { apiURL } = useBrand();
+    const snippet = `curl ${apiURL}/v1/campaigns \\
   -H "Authorization: Bearer ${prefix}…" \\
   -H "Content-Type: application/json"`;
     const [copied, setCopied] = React.useState(false);

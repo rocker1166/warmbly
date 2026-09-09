@@ -492,6 +492,21 @@ sudo certbot renew --dry-run --pre-hook 'systemctl stop nginx' --post-hook 'syst
 
 Those hooks are saved in the renewal config and reused on every real renewal.
 
+### Custom tracking and forms domains
+
+A workspace on this instance can point its own subdomain at your tracking or forms host (`t.acme.com` CNAME to `t.yourdomain.com`) and verify it. Verification is a DNS check, so it passes without nginx knowing anything about the name, and every tracked link and opt-out link on that domain then fails TLS because nginx has no certificate for it.
+
+nginx has no on-demand issuance, so this is a per-domain step. Add the name to the certificate and give it a server block that proxies to `:3000` for tracking, or `:8090` for forms:
+
+```bash
+sudo certbot certonly --standalone --cert-name app.yourdomain.com \
+  --expand -d t.acme.com
+```
+
+The backend exposes the same answer nginx cannot ask for itself, at `GET /tls/authorize?domain=<host>`: `204` when this instance has verified the name, `403` otherwise. That is what the bundled Caddy install uses to issue certificates without a per-domain step, and it is what a script that automates the above should check before requesting one.
+
+If you do not want to run that step per customer, leave custom domains unverified: links stay on your shared tracking host, which already has a certificate, and nothing breaks.
+
 The frontends are plain files under `/opt/warmbly/web` and `/opt/warmbly/admin` with a history fallback to `index.html`, and `index.html` and `config.js` are served with `Cache-Control: no-store` so a redeploy is picked up on the next load. Any other web server can do the same; the config file has the exact headers.
 
 </Step>

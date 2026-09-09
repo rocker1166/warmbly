@@ -65,12 +65,6 @@ COPY --from=builder /out/warmblyctl /usr/local/bin/warmblyctl
 # can drive the product as well as recover it without installing anything.
 COPY --from=builder /out/warmbly /usr/local/bin/warmbly
 
-# Installer script the worker orchestrator uploads + runs over SSH, and serves
-# at GET /worker-install.sh. The mode is explicit because COPY otherwise keeps
-# the checkout's: on a filesystem without POSIX permissions that is 0700, and
-# the backend runs as uid 1000, so serving the installer fails with a 500.
-COPY --chmod=755 scripts/install-worker.sh /app/scripts/install-worker.sh
-
 USER warmbly
 EXPOSE 8080
 

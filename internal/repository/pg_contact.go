@@ -1376,6 +1376,13 @@ func (r *contactRepository) Search(
 				-- Total email steps in the sequence, to tell "still sending" (active)
 				-- apart from "every step sent" (completed/done).
 				'total_steps', (SELECT COUNT(*) FROM sequences st WHERE st.campaign_id = %[1]s AND st.kind = 'email'),
+				-- The mailbox this lead's whole sequence sends from, fixed when
+				-- its first email went out. Null until then.
+				'sender', (
+					SELECT ea.email FROM campaign_leads cls
+					JOIN email_accounts ea ON ea.id = cls.email_account_id
+					WHERE cls.campaign_id = %[1]s AND cls.contact_id = c.id
+				),
 				-- The step the contact is on now = the latest step actually sent.
 				-- Labelled the same way the canvas does: custom name, else
 				-- "Email N" (Nth email-kind step by position), else action label.
@@ -1536,6 +1543,7 @@ func (r *contactRepository) Search(
 				TotalSteps int        `json:"total_steps"`
 				LastAt     *time.Time `json:"last_at"`
 				Step       *string    `json:"step"`
+				Sender     *string    `json:"sender"`
 
 				Undeliverable bool `json:"undeliverable"`
 			}
@@ -1572,8 +1580,13 @@ func (r *contactRepository) Search(
 			if status == models.LeadStatusFailed && lp.FailReason != nil {
 				failureReason = *lp.FailReason
 			}
+			sender := ""
+			if lp.Sender != nil {
+				sender = *lp.Sender
+			}
 			c.CampaignLead = &models.ContactCampaignProgress{
 				Status:         status,
+				Sender:         sender,
 				Sent:           lp.Sent,
 				Opened:         lp.Opened,
 				MachineOpened:  lp.MachineOpn,

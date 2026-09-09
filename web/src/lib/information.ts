@@ -1,6 +1,5 @@
 import { runtimeEnv } from "./runtimeConfig";
 
-export const WEBSITE_URL = "https://warmbly.com";
 // These read the container-injected runtime config first (so one built image
 // works for any deployment), then the value Vite baked at build time.
 export const APP_URL = runtimeEnv("APP_URL", import.meta.env.VITE_APP_URL);

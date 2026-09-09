@@ -61,7 +61,6 @@ import { useConfirm } from "@/hooks/context/confirm";
 import RichTextAIEdit from "@/components/app/ai/RichTextAIEdit";
 import RichTextAICaret from "@/components/app/ai/RichTextAICaret";
 import { useForms } from "@/lib/api/hooks/app/forms";
-import { WEBSITE_URL } from "@/lib/information";
 import { EmailImage } from "./nodes/EmailImageNode";
 import { ImageBubble, ImageMenu } from "./ImageControls";
 import { AlignMenu, ColorMenu, TableMenu, TypeMenu } from "./DesignControls";
@@ -851,7 +850,7 @@ export function VariableMenu({
                         </div>
 
                         <a
-                            href={`${WEBSITE_URL}/learn/personalization`}
+                            href="https://docs.warmbly.com/learn/personalization/"
                             target="_blank"
                             rel="noreferrer"
                             onMouseDown={(e) => e.preventDefault()}

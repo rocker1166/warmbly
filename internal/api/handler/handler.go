@@ -288,6 +288,11 @@ type Handler struct {
 	// /api/v1/internal/tracked-links/:id (same no-direct-Postgres rule).
 	TrackedLinks repository.TrackedLinkRepository
 
+	// Verified custom tracking and forms domains, read by the on-demand TLS
+	// gate at /tls/authorize so a reverse proxy can obtain a certificate for a
+	// hostname that was not known when the instance was installed.
+	CustomDomains repository.CustomDomainRepository
+
 	// Direct repositories used by handlers that don't yet have a
 	// service layer (avatars, etc.). Keep narrow and add a service
 	// only when business logic accumulates.
