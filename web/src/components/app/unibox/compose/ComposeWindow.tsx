@@ -421,13 +421,19 @@ function ComposeWindowInner({
 
     return (
         <>
-        {full && (
-            <div
-                className="fixed inset-0 z-[69] bg-slate-900/40"
-                onClick={() => setExpanded(false)}
-                aria-hidden
-            />
-        )}
+        <AnimatePresence>
+            {full && (
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="fixed inset-0 z-[69] bg-slate-900/40"
+                    onClick={() => setExpanded(false)}
+                    aria-hidden
+                />
+            )}
+        </AnimatePresence>
         <motion.div
             initial={{ opacity: 0, y: 24, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -444,6 +450,11 @@ function ComposeWindowInner({
                     // Floating AI layers portal to <body> and stop their own
                     // Escape; reaching here means nothing else claimed it.
                     e.stopPropagation();
+                    // Innermost layer first: collapse the expand, keep the draft.
+                    if (full) {
+                        setExpanded(false);
+                        return;
+                    }
                     requestClose();
                 }
             }}
