@@ -442,7 +442,7 @@ function ComposeWindowInner({
             className={cn(
                 "fixed z-[70] flex items-stretch rounded-xl border border-slate-200 bg-white shadow-2xl overflow-hidden",
                 full
-                    ? "inset-2 sm:inset-y-6 sm:inset-x-[max(1.5rem,calc(50%-30rem))]"
+                    ? "inset-2 sm:inset-y-6 sm:inset-x-[max(1.5rem,calc(50%_-_30rem))]"
                     : "inset-x-2 bottom-2 sm:inset-x-auto sm:right-4 sm:bottom-4 max-h-[min(660px,calc(100dvh-1rem))]",
             )}
             onKeyDown={(e) => {
