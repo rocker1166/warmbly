@@ -147,6 +147,8 @@ export function ThreadView({ threadId, emailId }: ThreadViewProps) {
   const q = useThread(threadId, emailId);
   const scheduledQ = useThreadScheduled(threadId);
   const accounts = useAppStore((s) => s.emails);
+  const userId = useAppStore((s) => s.user?.id);
+  const orgId = useAppStore((s) => s.currentOrganization?.id);
   const queryClient = useQueryClient();
 
   const cancel = useMutation({
@@ -175,16 +177,7 @@ export function ThreadView({ threadId, emailId }: ThreadViewProps) {
   const threadLabels = useThreadLabels(threadId);
   const [labelMenuOpen, setLabelMenuOpen] = React.useState(false);
 
-  // CRM context rail (right side). From lg up it is a static rail beside the
-  // thread and its open/closed state is a persisted preference: this view is
-  // keyed on the thread id, so component state would put the rail back over
-  // every conversation the reader opens. It starts CLOSED: it is a lookup, not
-  // something read on every thread, and opening it unasked takes the width the
-  // message needs. Either state sticks once chosen (#473).
-  //
-  // Below lg the same panel is an overlay drawer on top of the thread, which
-  // is not something to restore on arrival, so there it is plain local state
-  // that starts closed and never writes the preference.
+  // Desktop visibility is remembered; mobile drawers start closed.
   const isWide = useMediaQuery(LG_QUERY);
   const railPref = useAppStore((s) => s.uniboxContactRailOpen);
   const setRailPref = useAppStore((s) => s.setUniboxContactRailOpen);
@@ -235,21 +228,23 @@ export function ThreadView({ threadId, emailId }: ThreadViewProps) {
     setReplySeed(null);
   }, [threadId]);
 
-  // A half-written reply survives in localStorage (lib/unibox/replyDraft), so
-  // bring its composer back on arrival instead of leaving the draft buried
-  // behind a Reply click. Once per thread: reopening it after the reader
-  // closes it would trap them.
+  // Restore once on arrival, including drafts targeting an older message.
   const reopenedFor = React.useRef<string | null>(null);
   React.useEffect(() => {
     const msgs = q.data?.data ?? [];
-    const last = msgs[msgs.length - 1];
-    if (!last || reopenedFor.current === threadId) return;
-    reopenedFor.current = threadId;
-    const mode = (["reply", "forward"] as ReplyMode[]).find((m) =>
-      loadReplyDraft(replyDraftKey(threadId, last.id, m)),
-    );
-    if (mode) setReplyState({ messageId: last.id, mode });
-  }, [threadId, q.data]);
+    if (!msgs.length || !userId || !orgId) return;
+    const identity = JSON.stringify([userId, orgId, threadId]);
+    if (reopenedFor.current === identity) return;
+    reopenedFor.current = identity;
+    for (const message of [...msgs].reverse()) {
+      for (const mode of ["reply", "forward"] as const) {
+        if (loadReplyDraft(replyDraftKey(userId, orgId, threadId, message.id, mode))) {
+          openReply(message.id, mode);
+          return;
+        }
+      }
+    }
+  }, [threadId, q.data, userId, orgId, openReply]);
 
   // A cancelled undo-send reply for this thread reopens the composer with
   // the exact content that was about to go out.
@@ -732,7 +727,7 @@ export function ThreadView({ threadId, emailId }: ThreadViewProps) {
               messages[messages.length - 1];
             return target ? (
               <ReplyComposer
-                key={`${replyState.messageId}-${replyState.mode}`}
+                key={`${userId}-${orgId}-${replyState.messageId}-${replyState.mode}`}
                 threadId={threadId}
                 replyTo={target}
                 mode={replyState.mode}

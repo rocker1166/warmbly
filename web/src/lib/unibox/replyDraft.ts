@@ -1,25 +1,19 @@
-// Per-thread reply drafts, kept in localStorage.
-//
-// The composer unmounts on anything that leaves the thread (a route change, a
-// scope switch, a remount after a background refetch), and React state goes
-// with it. What the user typed is mirrored here and read back when a composer
-// for the same target opens again. Cleared once the reply is sent.
+export type ReplyMode = "reply" | "forward";
 
-import type { ReplySeed } from "@/components/app/unibox/ReplyComposer";
-
-const PREFIX = "warmbly-reply-draft:";
-
-/** threadId + the message being replied to + the mode: one draft per composer. */
-export function replyDraftKey(threadId: string, messageId: string, mode: string): string {
-    return `${PREFIX}${threadId}:${messageId}:${mode}`;
+export interface ReplySeed {
+    to: string[];
+    cc: string[];
+    bcc: string[];
+    subject: string;
+    body: string;
 }
 
-function isEmpty(d: ReplySeed): boolean {
-    return (
-        !d.body.trim() &&
-        !d.cc.length &&
-        !d.bcc.length
-    );
+export function replyDraftKey(userId: string, orgId: string, threadId: string, messageId: string, mode: ReplyMode): string {
+    return `warmbly-reply-draft:${JSON.stringify([userId, orgId, threadId, messageId, mode])}`;
+}
+
+function recipients(value: unknown): string[] {
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
 export function loadReplyDraft(key: string): ReplySeed | null {
@@ -29,33 +23,33 @@ export function loadReplyDraft(key: string): ReplySeed | null {
         const d = JSON.parse(raw) as Partial<ReplySeed>;
         if (typeof d?.body !== "string") return null;
         return {
-            to: Array.isArray(d.to) ? d.to : [],
-            cc: Array.isArray(d.cc) ? d.cc : [],
-            bcc: Array.isArray(d.bcc) ? d.bcc : [],
+            to: recipients(d.to),
+            cc: recipients(d.cc),
+            bcc: recipients(d.bcc),
             subject: typeof d.subject === "string" ? d.subject : "",
             body: d.body,
         };
     } catch {
-        // Private mode, quota, or hand-edited junk: a lost draft is not worth
-        // taking the composer down for.
         return null;
     }
 }
 
-/** Writes the draft, or removes it once there is nothing worth keeping. */
-export function saveReplyDraft(key: string, draft: ReplySeed): void {
+// Compare against composer defaults; empty recipients and subjects can be intentional.
+export function saveReplyDraft(key: string, draft: ReplySeed): boolean {
     try {
-        if (isEmpty(draft)) localStorage.removeItem(key);
-        else localStorage.setItem(key, JSON.stringify(draft));
+        localStorage.setItem(key, JSON.stringify(draft));
+        return true;
     } catch {
-        /* storage unavailable: drafting still works for this session */
+        return false;
     }
 }
 
-export function clearReplyDraft(key: string): void {
+export function clearReplyDraft(key: string, expected?: ReplySeed): boolean {
     try {
+        if (expected && localStorage.getItem(key) !== JSON.stringify(expected)) return true;
         localStorage.removeItem(key);
+        return true;
     } catch {
-        /* nothing to do */
+        return false;
     }
 }

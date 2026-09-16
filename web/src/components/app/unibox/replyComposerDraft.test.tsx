@@ -11,13 +11,14 @@
 // leaves the draft alone, and that a seed still restores one.
 
 import React from "react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
 
 vi.mock("react-hot-toast", () => ({
     default: { success: () => {}, error: () => {} },
 }));
-vi.mock("@/lib/api/client/app/unibox/sendReply", () => ({ default: async () => ({}) }));
+const sendReply = vi.hoisted(() => vi.fn(async () => ({})));
+vi.mock("@/lib/api/client/app/unibox/sendReply", () => ({ default: sendReply }));
 vi.mock("@/lib/api/hooks/app/templates/useTemplates", () => ({
     default: () => ({ data: { data: [] } }),
 }));
@@ -31,8 +32,8 @@ vi.mock("@/hooks/context/user", () => ({
     useUserProfile: () => ({ user: { id: "u1", email: "me@example.com", name: "Me" } }),
 }));
 vi.mock("@/stores", () => ({
-    useAppStore: (sel: (s: { emails: unknown[] }) => unknown) =>
-        sel({ emails: [{ id: "acc1", email: "me@example.com", signature_html: "", signature_plain: "" }] }),
+    useAppStore: (sel: (s: { emails: unknown[]; currentOrganization: { id: string } }) => unknown) =>
+        sel({ currentOrganization: { id: "org1" }, emails: [{ id: "acc1", email: "me@example.com", signature_html: "", signature_plain: "" }] }),
 }));
 vi.mock("@/hooks/useOutboxStore", () => ({
     useOutboxStore: (sel: (s: { add: () => void }) => unknown) => sel({ add: () => {} }),
@@ -52,6 +53,8 @@ vi.mock("./compose/ContactRecipientField", () => ({ default: () => null }));
 vi.mock("@/components/ui/DateTimePicker", () => ({ DateTimePicker: () => null }));
 
 const { ReplyComposer } = await import("./ReplyComposer");
+const { replyDraftKey } = await import("@/lib/unibox/replyDraft");
+const draftKey = () => replyDraftKey("u1", "org1", "t1", "msg-1", "reply");
 
 // The thread maps its payload through `toUniboxEmail` on every render, so each
 // render hands the composer a new object for the same message. This builds one.
@@ -71,7 +74,16 @@ function body() {
 }
 
 describe("reply composer drafts", () => {
-    beforeEach(() => vi.clearAllMocks());
+    beforeEach(() => {
+        vi.clearAllMocks();
+        setupStorage();
+        vi.useFakeTimers();
+    });
+    afterEach(() => {
+        cleanup();
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+    });
 
     it("keeps what was typed when the thread re-renders", () => {
         const { rerender } = render(
@@ -103,4 +115,134 @@ describe("reply composer drafts", () => {
         );
         expect(body().value).toBe("restored");
     });
+    it("restores the latest keystrokes after an immediate unmount", () => {
+        const view = render(<ReplyComposer threadId="t1" replyTo={message()} mode="reply" onClose={() => {}} />);
+        fireEvent.change(body(), { target: { value: "Latest keystrokes" } });
+        view.unmount();
+        render(<ReplyComposer threadId="t1" replyTo={message()} mode="reply" onClose={() => {}} />);
+        expect(body()).toHaveValue("Latest keystrokes");
+    });
+
+    it("saves before pagehide and shows only confirmed saves", () => {
+        render(<ReplyComposer threadId="t1" replyTo={message()} mode="reply" onClose={() => {}} />);
+        fireEvent.change(body(), { target: { value: "Before reload" } });
+        expect(screen.queryByText("Draft saved")).toBeNull();
+        fireEvent(window, new Event("pagehide"));
+        expect(localStorage.getItem(draftKey())).toContain("Before reload");
+        fireEvent.change(body(), { target: { value: "After reload" } });
+        act(() => vi.advanceTimersByTime(400));
+        expect(screen.getByText("Draft saved")).toBeInTheDocument();
+    });
+
+    it("does not resurrect a discarded draft during its exit animation", () => {
+        const onClose = vi.fn();
+        const view = render(<ReplyComposer threadId="t1" replyTo={message()} mode="reply" onClose={onClose} />);
+        fireEvent.change(body(), { target: { value: "Discard me" } });
+        act(() => vi.advanceTimersByTime(300));
+        fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+        expect(onClose).toHaveBeenCalledOnce();
+        act(() => vi.advanceTimersByTime(500));
+        view.unmount();
+        expect(localStorage.getItem(draftKey())).toBeNull();
+    });
+
+    it("does not resurrect a queued reply during its exit animation", async () => {
+        const onClose = vi.fn();
+        const view = render(<ReplyComposer threadId="t1" replyTo={message()} mode="reply" onClose={onClose} />);
+        fireEvent.change(body(), { target: { value: "Send me" } });
+        act(() => vi.advanceTimersByTime(300));
+        await act(async () => fireEvent.keyDown(body(), { key: "Enter", ctrlKey: true }));
+        expect(sendReply).toHaveBeenCalledOnce();
+        expect(onClose).toHaveBeenCalledOnce();
+        act(() => vi.advanceTimersByTime(500));
+        view.unmount();
+        expect(localStorage.getItem(draftKey())).toBeNull();
+    });
+
+    it("resumes persistence when undo restores the same exiting composer", async () => {
+        const view = render(<ReplyComposer threadId="t1" replyTo={message()} mode="reply" onClose={() => {}} />);
+        fireEvent.change(body(), { target: { value: "Original send" } });
+        await act(async () => fireEvent.keyDown(body(), { key: "Enter", ctrlKey: true }));
+        const seed = { to: ["them@example.com"], cc: [], bcc: [], subject: "Re: x", body: "Original send" };
+        view.rerender(<ReplyComposer threadId="t1" replyTo={message()} mode="reply" seed={seed} onClose={() => {}} />);
+        fireEvent.change(body(), { target: { value: "Edited after undo" } });
+        view.unmount();
+        expect(localStorage.getItem(draftKey())).toContain("Edited after undo");
+    });
+
+    it("does not delete a newer draft when an earlier send completes after navigation", async () => {
+        let finish!: (value: object) => void;
+        sendReply.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+        const onClose = vi.fn();
+        const previous = render(<ReplyComposer threadId="t1" replyTo={message()} mode="reply" onClose={onClose} />);
+        fireEvent.change(body(), { target: { value: "First reply" } });
+        fireEvent.keyDown(body(), { key: "Enter", ctrlKey: true });
+        previous.unmount();
+        const current = render(<ReplyComposer threadId="t1" replyTo={message()} mode="reply" onClose={() => {}} />);
+        fireEvent.change(body(), { target: { value: "New reply after navigation" } });
+        act(() => vi.advanceTimersByTime(400));
+        await act(async () => finish({}));
+        expect(onClose).not.toHaveBeenCalled();
+        expect(localStorage.getItem(draftKey())).toContain("New reply after navigation");
+        current.unmount();
+    });
+
+    it("keeps edits made while a send is pending", async () => {
+        let finish!: (value: object) => void;
+        sendReply.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+        const onClose = vi.fn();
+        const view = render(<ReplyComposer threadId="t1" replyTo={message()} mode="reply" onClose={onClose} />);
+        fireEvent.change(body(), { target: { value: "First reply" } });
+        fireEvent.keyDown(body(), { key: "Enter", ctrlKey: true });
+        fireEvent.change(body(), { target: { value: "Keep editing" } });
+        await act(async () => finish({}));
+        expect(onClose).not.toHaveBeenCalled();
+        expect(body()).toHaveValue("Keep editing");
+        view.unmount();
+        expect(localStorage.getItem(draftKey())).toContain("Keep editing");
+    });
+
+    it("keeps a failed send available after navigating away", async () => {
+        sendReply.mockRejectedValueOnce(new Error("offline"));
+        const view = render(<ReplyComposer threadId="t1" replyTo={message()} mode="reply" onClose={() => {}} />);
+        fireEvent.change(body(), { target: { value: "Retry me" } });
+        await act(async () => fireEvent.keyDown(body(), { key: "Enter", ctrlKey: true }));
+        view.unmount();
+        render(<ReplyComposer threadId="t1" replyTo={message()} mode="reply" onClose={() => {}} />);
+        expect(body()).toHaveValue("Retry me");
+    });
+
+    it("preserves a subject-only edit and never creates an untouched draft", () => {
+        let view = render(<ReplyComposer threadId="t1" replyTo={message()} mode="forward" onClose={() => {}} />);
+        act(() => vi.advanceTimersByTime(400));
+        view.unmount();
+        expect(localStorage.getItem(replyDraftKey("u1", "org1", "t1", "msg-1", "forward"))).toBeNull();
+        view = render(<ReplyComposer threadId="t1" replyTo={message()} mode="forward" onClose={() => {}} />);
+        fireEvent.change(screen.getByPlaceholderText("Subject"), { target: { value: "Custom subject" } });
+        view.unmount();
+        render(<ReplyComposer threadId="t1" replyTo={message()} mode="forward" onClose={() => {}} />);
+        expect(screen.getByPlaceholderText("Subject")).toHaveValue("Custom subject");
+    });
+
+    it("does not claim a failed save succeeded or close away the unsaved text", () => {
+        vi.spyOn(localStorage, "setItem").mockImplementation(() => { throw new Error("quota"); });
+        const onClose = vi.fn();
+        render(<ReplyComposer threadId="t1" replyTo={message()} mode="reply" onClose={onClose} />);
+        fireEvent.change(body(), { target: { value: "Keep me" } });
+        act(() => vi.advanceTimersByTime(400));
+        expect(screen.queryByText("Draft saved")).toBeNull();
+        expect(screen.getByText("Draft not saved")).toBeInTheDocument();
+        fireEvent.click(screen.getByLabelText("Close composer, keeping the draft"));
+        expect(onClose).not.toHaveBeenCalled();
+        expect(body()).toHaveValue("Keep me");
+    });
+
 });
+
+
+function setupStorage() {
+    const values = new Map<string, string>();
+    vi.mocked(localStorage.getItem).mockImplementation((key: string) => values.get(key) ?? null);
+    vi.mocked(localStorage.setItem).mockImplementation((key: string, value: string) => { values.set(key, value); });
+    vi.mocked(localStorage.removeItem).mockImplementation((key: string) => { values.delete(key); });
+}

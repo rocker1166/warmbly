@@ -5,6 +5,8 @@ description: "A unified inbox across all connected mailboxes, with categories an
 
 One inbox for every connected mailbox. Read, sort, and reply from a single screen instead of logging into each account. Three columns: a **scope rail** for picking what to look at, a **conversation list**, and a **thread view** where you read and reply.
 
+Verified [warmup mail](/guides/warmup/) stays out of Unibox, including your mailbox's Sent copies and warmup run by [Warmbly Cloud](/guides/warmbly-cloud/). It does not create inbox notifications or trigger reply classification. After an upgrade, the consumer automatically checks existing messages in batches and removes confirmed warmup from Unibox. This leaves the messages in your email provider and keeps ordinary conversations intact.
+
 ## Layout
 
 The columns are yours to size. Every choice here is remembered in the browser you made it in, so the inbox opens the way you left it.
@@ -13,7 +15,7 @@ The columns are yours to size. Every choice here is remembered in the browser yo
 | --- | --- |
 | The divider between the list and the thread | Drag it to widen the conversation list so long subjects fit, or to give the space back to the thread. It also takes the keyboard once it has focus: arrow keys nudge it (hold `Shift` for a bigger step), `Home` and `End` go to the narrowest and widest the window allows, `Enter` (or a double-click) puts it back to the default. |
 | **Collapse** at the bottom of the left navigation, or `b` | Shrinks Warmbly's own navigation to an icon rail and gives the width to the page. Row labels become tooltips; unread mail keeps its count badge and an open [Advisor](/guides/advisor/) finding shows as a coloured dot on the icon. The same control expands it again. |
-| The contact button in the thread header | Shows or hides the contact panel on the right. It opens by default on a wide screen, and closing it sticks: the next conversation you open keeps it closed. |
+| The contact button in the thread header | Shows or hides the contact panel on the right. It starts closed when no preference is saved. Opening or closing it sticks across conversations, and existing preferences are preserved. |
 
 How wide the list can get depends on the window: the thread always keeps enough room to read a message, and the contact panel counts toward that when it is open, so the widest setting is narrower on a laptop than on a large monitor.
 
@@ -48,6 +50,8 @@ The rail is two short groups and then your mailboxes. The first group is where y
 | Trash | Second | Deleted |
 
 **Scheduled** sits between Sent and Archive. It is a view rather than a folder, listing replies queued to send later, and it reads naturally next to Sent.
+
+Opening **Inbox** from the main navigation starts in the Inbox folder. Sent messages live in **Sent**; choose **All mail** when you want inbound and outbound messages together. An Inbox conversation still shows its complete history, including your replies, when you open it.
 
 Each message starts in the folder the provider has it in: IMAP special-use folder attributes, Gmail labels, and Outlook well-known folders all map to the same six. Moves at the provider (junking a message, clearing it out of spam) follow on the next sync. Drafts are also reconciled: a draft the mailbox no longer holds is removed here too, so the fresh copy Gmail saves on every autosave does not leave the previous ones behind. You can also file a conversation yourself, which moves it here without moving it at the provider; see [filing a conversation](#filing-a-conversation). The active row is highlighted grey, unread counts sit on the right in blue, and hovering a folder reveals a three-dot menu with **Mark all as read**.
 
@@ -94,6 +98,10 @@ What you see is the message as it was sent: paragraphs, line breaks, lists, tabl
 
 HTML mail renders in an isolated frame, so a sender's styling cannot leak into the dashboard and nothing in the message can run code. Links open in a new tab and carry no referrer. If the stored copy of a message cannot be read, Warmbly shows the preview it has and says so instead of failing to open the conversation.
 
+Warmbly removes its open-tracking pixels from the displayed copy, including quoted messages. Reading mail here, whether in Inbox, Sent or another view, does not record a campaign open. The delivered email keeps its tracking pixel for recipient opens, and ordinary images still display.
+
+Recognized quoted history collapses behind **Show quoted text**. Click it to read the full chain. Messages made entirely of quoted content and ambiguous inline replies stay visible. Outgoing messages from the connected mailbox have a blue left border and an **Outgoing** badge.
+
 ## Categories and labels
 
 Categories are the workspace's conversation labels, shared with the rest of Warmbly, so `Interested` means the same thing on a contact as it does here. They are shared with the rest of the team too: a category anyone creates is available to everyone, and a conversation one member labels shows that label to the next. Label with the tag button in the conversation header or `c`: search existing categories, tick what applies, or type a name and **Create**. A conversation can carry several.
@@ -130,7 +138,11 @@ Unlike read state, Archive and Delete are Warmbly's own filing. The message keep
 
 ## Replying
 
-Reply, forward, or hover any single message to reply to it specifically. The composer only appears when you ask for it. Replies go from the mailbox that owns the thread, so conversations stay on one account. You can apply a saved **template** or **Insert booking link**.
+Reply, forward, or hover any single message to reply to it specifically. The composer appears when you ask for it or return to a conversation with a saved reply or forward. Replies go from the mailbox that owns the thread, so conversations stay on one account. You can apply a saved **template** or **Insert booking link**.
+
+Replies and forwards save after a short typing pause, and save the latest edits when you close the composer, leave the conversation, or reload. Returning to the thread reopens a saved draft, including one addressed to an older message. **Discard** removes it; successfully queuing a send removes it too. Undoing a send restores the message for editing.
+
+These reply drafts are personal to your signed-in user and workspace in this browser. They do not sync to other devices, appear in the mailbox's **Drafts** folder, or travel in a [workspace export](/guides/workspace-export-import/). Clearing browser data removes them. **Draft saved** confirms browser storage succeeded; **Draft not saved** means you should copy your text before leaving.
 
 ### AI drafts
 

@@ -55,4 +55,48 @@ describe("EmailBody quoted history", () => {
         render(<EmailBody plain={"Hi Ada,\n\nAre you free Tuesday?"} />);
         expect(toggle()).not.toBeInTheDocument();
     });
+    it.each([
+        '<div class="gmail_quote_container">Old reply</div>',
+        '<blockquote type = cite>Old reply</blockquote>',
+        '<div class="yahoo_quoted">Old reply</div>',
+        '<div class="moz-cite-prefix">On Monday, Ada wrote:</div><blockquote type="cite">Old reply</blockquote>',
+        '<div class="moz-cite-prefix">On Monday:</div><blockquote>Old reply</blockquote>',
+        '<div id="divRplyFwdMsg">From: Ada</div><p>Old reply</p>',
+        '<div id="appendonsend"></div>Old reply',
+    ])("hides and restores the same HTML history: %s", (quote) => {
+        const { container } = render(<EmailBody html={`<p>New reply</p>${quote}`} />);
+        const frame = container.querySelector("iframe")!;
+        const documentBody = () => new DOMParser().parseFromString(frame.getAttribute("srcdoc")!, "text/html").body;
+        const visibleText = () => {
+            const doc = documentBody();
+            doc.querySelectorAll<HTMLElement>('[style]').forEach((node) => {
+                if (node.style.display === "none") node.remove();
+            });
+            return doc.textContent;
+        };
+        expect(toggle()).toHaveAttribute("aria-expanded", "false");
+        expect(visibleText()).toContain("New reply");
+        expect(visibleText()).not.toContain("Old reply");
+        fireEvent.click(toggle()!);
+        expect(toggle()).toHaveAttribute("aria-expanded", "true");
+        expect(visibleText()).toContain("Old reply");
+        expect(frame.getAttribute("sandbox")).not.toContain("allow-scripts");
+    });
+
+    it("keeps quote-only HTML and inline answers visible", () => {
+        const { rerender } = render(<EmailBody html='<div class="gmail_quote">The entire message</div>' />);
+        expect(toggle()).toBeNull();
+        rerender(<EmailBody plain={"Intro\n> question one\nMy answer\n> question two\nAnother answer"} />);
+        expect(toggle()).toBeNull();
+        rerender(<EmailBody plain={"Intro\nOn Monday Ada wrote:\n> question\nMy inline answer"} />);
+        expect(toggle()).toBeNull();
+    });
+
+    it("does not mistake ordinary From lines or Gmail extra wrappers for history", () => {
+        const { rerender } = render(<EmailBody plain={"Shipping details\nFrom: London\nTo: Paris"} />);
+        expect(toggle()).toBeNull();
+        rerender(<EmailBody html='<div class="gmail_extra">My new reply</div>' />);
+        expect(toggle()).toBeNull();
+    });
+
 });

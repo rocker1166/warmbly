@@ -106,9 +106,6 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
 
   // Unibox layout
   uniboxListWidth: UNIBOX_LIST_DEFAULT_WIDTH,
-  // Closed by default: the contact panel is a lookup, not something you read
-  // every thread, and opening it unasked eats ~320px of the message column.
-  // Toggling it still sticks (persisted).
   uniboxContactRailOpen: false,
 
   // Actions - Sidebar

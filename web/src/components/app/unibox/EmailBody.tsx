@@ -19,15 +19,10 @@ interface EmailBodyProps {
     plain?: string | null;
 }
 
-// ── Quoted history ─────────────────────────────────────────────────────────
-// Every reply carries the whole conversation inside it, so rendering a thread
-// verbatim shows the same text N times and buries the three lines that are
-// actually new. Mail clients collapse that; so do we. The markers below are
-// what the major clients leave behind, plus our own wrapper for plain text.
+// Collapse only recognizable history; ambiguous inline replies stay visible.
 const QUOTE_SELECTORS = [
     ".gmail_quote",
     ".gmail_quote_container",
-    ".gmail_extra",
     'blockquote[type="cite"]',
     ".yahoo_quoted",
     ".moz-cite-prefix",
@@ -36,34 +31,43 @@ const QUOTE_SELECTORS = [
     "[data-warmbly-quote]",
 ].join(", ");
 
-const HIDE_QUOTE_CSS = `${QUOTE_SELECTORS} { display: none !important; }`;
-
-// Decides whether the toggle is worth showing. Kept in step with
-// QUOTE_SELECTORS by hand; a DOM parse here would only be thrown away.
-const HAS_QUOTE =
-    /\b(?:gmail_quote|gmail_extra|yahoo_quoted|moz-cite-prefix)\b|id=["'](?:divRplyFwdMsg|appendonsend)["']|<blockquote[^>]+type=["']cite["']|data-warmbly-quote/i;
-
-// The line that starts the quoted tail of a plain-text reply: a `>` quote, an
-// attribution line, or one of the separators Outlook writes.
-const PLAIN_QUOTE_LINE =
-    /^(?:>.*|On\b[\s\S]{0,200}?\bwrote:|-{2,}\s*Original Message\s*-{2,}|-{2,}\s*Forwarded message\s*-{2,}|_{10,}|From:\s.+)$/;
-
-/** Splits plain text into what the sender wrote and the history below it. */
-function splitPlainQuote(text: string): { head: string; quote: string } {
-    const lines = text.replace(/\r\n/g, "\n").split("\n");
-    const at = lines.findIndex((l) => PLAIN_QUOTE_LINE.test(l.trim()));
-    // No marker, or the message is nothing but quote: leave it whole.
-    if (at <= 0) return { head: text, quote: "" };
-    return {
-        head: lines.slice(0, at).join("\n").trimEnd(),
-        quote: lines.slice(at).join("\n"),
-    };
-}
+const PLAIN_ATTRIBUTION = /^(?:On\b.{0,200}\bwrote:|-{2,}\s*(?:Original Message|Forwarded message)\s*-{2,})$/;
 
 function plainToBody(text: string): string {
-    const { head, quote } = splitPlainQuote(text);
-    if (!quote) return plainToDisplayHtml(text);
-    return `${plainToDisplayHtml(head)}<div data-warmbly-quote>${plainToDisplayHtml(quote)}</div>`;
+    const lines = text.replace(/\r\n/g, "\n").split("\n");
+    const at = lines.findIndex((line) => PLAIN_ATTRIBUTION.test(line.trim()) || line.trim().startsWith(">"));
+    if (at <= 0 || !lines.slice(0, at).join("").trim()) return plainToDisplayHtml(text);
+    // An unprefixed answer after a > quote may be an inline reply, not history.
+    const quotedAt = lines.findIndex((line, index) => index >= at && line.trim().startsWith(">"));
+    if (quotedAt >= 0 && lines.slice(quotedAt).some((line) => line.trim() && !line.trim().startsWith(">"))) {
+        return plainToDisplayHtml(text);
+    }
+    return `${plainToDisplayHtml(lines.slice(0, at).join("\n"))}<div data-warmbly-quote>${plainToDisplayHtml(lines.slice(at).join("\n"))}</div>`;
+}
+
+function prepareQuotes(body: string): { expanded: string; collapsed: string; hasQuote: boolean } {
+    const doc = new DOMParser().parseFromString(body, "text/html");
+    const quotes = new Set<HTMLElement>(doc.body.querySelectorAll(QUOTE_SELECTORS));
+    doc.body.querySelectorAll(".moz-cite-prefix").forEach((marker) => {
+        const quote = marker.nextElementSibling;
+        if (quote instanceof HTMLElement && quote.tagName === "BLOCKQUOTE") quotes.add(quote);
+    });
+    // Outlook puts history after its header rather than inside it.
+    doc.body.querySelectorAll<HTMLElement>("#divRplyFwdMsg, #appendonsend").forEach((marker) => {
+        const tail = doc.createElement("div");
+        marker.before(tail);
+        while (tail.nextSibling) tail.append(tail.nextSibling);
+        quotes.add(tail);
+    });
+    // Test Outlook tails as a unit, including any text-only siblings.
+    quotes.forEach((node) => node.setAttribute("data-warmbly-quote", ""));
+    const unquoted = doc.body.cloneNode(true) as HTMLElement;
+    unquoted.querySelectorAll("[data-warmbly-quote], script, style").forEach((node) => node.remove());
+    const hasContent = !!unquoted.textContent?.trim() || !!unquoted.querySelector("img, hr");
+    if (!quotes.size || !hasContent) return { expanded: body, collapsed: body, hasQuote: false };
+    const expanded = doc.documentElement.outerHTML;
+    quotes.forEach((node) => node.style.setProperty("display", "none", "important"));
+    return { expanded, collapsed: doc.documentElement.outerHTML, hasQuote: true };
 }
 
 // Typography for the message document. Deliberately minimal: the message
@@ -102,19 +106,11 @@ const DOCUMENT_ROOT = /^\s*(?:<!--[\s\S]*?-->\s*)*(?:<!doctype\s+html|<html[\s>]
 const HEAD_OPEN = /<head\b[^>]*>/i;
 const HTML_OPEN = /<html\b[^>]*>/i;
 
-function shell(showQuoted: boolean): string {
-    return (
-        `<meta charset="utf-8"><meta name="referrer" content="no-referrer">` +
-        // Every link in the message leaves the dashboard in a new tab.
-        `<base target="_blank"><style>${DOCUMENT_CSS}</style>` +
-        // The quote rule is !important and injected last so it beats the
-        // message's own stylesheet, which is what re-shows it.
-        (showQuoted ? "" : `<style>${HIDE_QUOTE_CSS}</style>`)
-    );
-}
+const SHELL =
+    `<meta charset="utf-8"><meta name="referrer" content="no-referrer">` +
+    `<base target="_blank"><style>${DOCUMENT_CSS}</style>`;
 
-function buildDocument(body: string, showQuoted: boolean): string {
-    const SHELL = shell(showQuoted);
+function buildDocument(body: string): string {
     if (DOCUMENT_ROOT.test(body)) {
         // Our shell goes FIRST in the head, so the message's own stylesheet
         // comes after it and wins on everything but the containment rules,
@@ -141,10 +137,11 @@ export default function EmailBody({ html, plain }: EmailBodyProps) {
         return "";
     }, [html, plain]);
 
-    const hasQuote = React.useMemo(() => HAS_QUOTE.test(body), [body]);
+    const quotes = React.useMemo(() => prepareQuotes(body), [body]);
+    const hasQuote = quotes.hasQuote;
     const srcDoc = React.useMemo(
-        () => (body ? buildDocument(body, showQuoted) : ""),
-        [body, showQuoted],
+        () => (body ? buildDocument(showQuoted ? quotes.expanded : quotes.collapsed) : ""),
+        [body, quotes, showQuoted],
     );
 
     // Late-loading remote images change the document height after onLoad, so

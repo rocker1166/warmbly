@@ -66,8 +66,6 @@ export function MessageBubble({
     const snippet = email.snippet ?? "";
 
     return (
-        // Direction gets a rendering of its own: a tinted rail down the left
-        // edge, so ours and theirs are told apart without reading addresses.
         <article
             className={cn(
                 "group border-l-2 pl-[14px] sm:pl-[18px] pr-4 sm:pr-5",
@@ -104,7 +102,7 @@ export function MessageBubble({
                         </span>
                         {outbound && (
                             <span className="shrink-0 px-1 rounded bg-sky-100 text-sky-700 text-[9.5px] font-semibold uppercase tracking-wide">
-                                You
+                                Outgoing
                             </span>
                         )}
                         {addr && expanded && (
