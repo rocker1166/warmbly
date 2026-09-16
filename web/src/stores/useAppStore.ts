@@ -38,6 +38,17 @@ export const useAppStore = create<AppStore>()(
       }),
       {
         name: 'warmbly-storage',
+        // v1: the unibox contact rail no longer opens by default. Anyone who
+        // used the app before this shipped has `true` persisted from the old
+        // default, so flip it once on rehydration; every toggle after that is
+        // theirs and sticks.
+        version: 1,
+        // `merge` above already spreads a partial over the live store, so the
+        // return type is looser than the partialized shape zustand infers.
+        migrate: ((persisted: unknown, from: number) => {
+          const p = (persisted ?? {}) as Partial<AppStore>
+          return from < 1 ? { ...p, uniboxContactRailOpen: false } : p
+        }) as never,
         // Rehydration does not go through the slice setters, so re-clamp the one
         // stored value that has bounds. Without this a value from an older build
         // (or a hand-edited one) renders as `width: NaNpx`.

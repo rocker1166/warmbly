@@ -54,6 +54,12 @@ import {
 import { cn } from "@/lib/utils";
 import { plainToHtml } from "@/lib/email/body";
 import { bareEmail, nameFromAddr } from "@/lib/helper/emailAddress";
+import {
+    clearReplyDraft,
+    loadReplyDraft,
+    replyDraftKey,
+    saveReplyDraft,
+} from "@/lib/unibox/replyDraft";
 
 export type ReplyMode = "reply" | "forward";
 
@@ -163,14 +169,28 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
 
     const initial = React.useMemo(() => deriveDefaults(replyTo, mode), [replyTo, mode]);
 
-    const [body, setBody] = React.useState(seed?.body ?? "");
-    const [subject, setSubject] = React.useState(seed?.subject ?? initial.subject);
-    const [to, setTo] = React.useState<string[]>(seed?.to ?? initial.to);
-    const [cc, setCc] = React.useState<string[]>(seed?.cc ?? []);
-    const [bcc, setBcc] = React.useState<string[]>(seed?.bcc ?? []);
-    const [showCc, setShowCc] = React.useState((seed?.cc.length ?? 0) > 0);
-    const [showBcc, setShowBcc] = React.useState((seed?.bcc.length ?? 0) > 0);
+    // One stored draft per compose session, which is what ThreadView keys this
+    // component on.
+    const draftKey = React.useMemo(
+        () => replyDraftKey(threadId, replyTo.id, mode),
+        [threadId, replyTo.id, mode],
+    );
+    // A cancelled undo-send seed wins over a stored draft.
+    const [restored] = React.useState<ReplySeed | null>(
+        () => seed ?? loadReplyDraft(draftKey),
+    );
+
+    const [body, setBody] = React.useState(restored?.body ?? "");
+    const [subject, setSubject] = React.useState(restored?.subject || initial.subject);
+    const [to, setTo] = React.useState<string[]>(
+        restored?.to.length ? restored.to : initial.to,
+    );
+    const [cc, setCc] = React.useState<string[]>(restored?.cc ?? []);
+    const [bcc, setBcc] = React.useState<string[]>(restored?.bcc ?? []);
+    const [showCc, setShowCc] = React.useState((restored?.cc.length ?? 0) > 0);
+    const [showBcc, setShowBcc] = React.useState((restored?.bcc.length ?? 0) > 0);
     const [isSending, setIsSending] = React.useState(false);
+    const [draftSaved, setDraftSaved] = React.useState(false);
 
     const [scheduleOpen, setScheduleOpen] = React.useState(false);
     const [customMode, setCustomMode] = React.useState(false);
@@ -218,6 +238,17 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
         setShowBcc(seed.bcc.length > 0);
         setBody(seed.body);
     }, [seed]);
+
+    // Mirror what is typed into localStorage, so a remount from any cause
+    // (route change, scope switch, refetch, reload) does not throw the reply
+    // away. Debounced: one write when typing pauses, not one per keystroke.
+    React.useEffect(() => {
+        const t = setTimeout(() => {
+            saveReplyDraft(draftKey, { to, cc, bcc, subject, body });
+            setDraftSaved(!!body.trim());
+        }, 400);
+        return () => clearTimeout(t);
+    }, [draftKey, to, cc, bcc, subject, body]);
 
     // Resolve the sending mailbox from the target message's
     // account_id. We look it up in the global emails store so we have
@@ -310,6 +341,8 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
             }
             setScheduleOpen(false);
             setCustomMode(false);
+            // Sent: the stored draft would otherwise reopen next time.
+            clearReplyDraft(draftKey);
             onClose();
         } catch {
             toast.error(mode === "forward" ? "Failed to forward" : "Failed to send reply");
@@ -415,11 +448,29 @@ export function ReplyComposer({ threadId, replyTo, mode, seed, onClose }: ReplyC
                     to {replyToName}
                     <span className="text-slate-400"> · {replyTargetSubject}</span>
                 </span>
+                {draftSaved && (
+                    <span className="hidden sm:inline text-[10.5px] text-slate-400 shrink-0">
+                        Draft saved
+                    </span>
+                )}
+                {draftSaved && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            clearReplyDraft(draftKey);
+                            onClose();
+                        }}
+                        title="Discard this draft"
+                        className="h-6 px-1.5 rounded-md text-[10.5px] text-slate-500 hover:text-rose-700 hover:bg-rose-50 transition-colors shrink-0"
+                    >
+                        Discard
+                    </button>
+                )}
                 <button
                     type="button"
                     onClick={onClose}
-                    aria-label="Close composer"
-                    title="Close composer"
+                    aria-label="Close composer, keeping the draft"
+                    title="Close, keeping the draft"
                     className="size-6 inline-flex items-center justify-center rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors shrink-0"
                 >
                     <XIcon className="w-3.5 h-3.5" />

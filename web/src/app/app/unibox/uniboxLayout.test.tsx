@@ -241,12 +241,18 @@ describe("unibox desktop layout (#473)", SUITE, () => {
     });
 
     describe("contact rail", () => {
-        it("opens by default and stays closed once closed, thread after thread", async () => {
+        it("starts closed by default, and each state sticks thread after thread", async () => {
+            // The suite seeds it open; the shipped default is closed (#538), so
+            // assert that separately before taking the seeded path.
+            useAppStore.setState({ uniboxContactRailOpen: false });
             await mount("/app/unibox/all");
             await settle();
-
             await openThread("Subject 4");
-            // Default is still open, which is what 568bdb48 settled on.
+            expect(screen.getByLabelText("Show contact panel")).toBeTruthy();
+
+            await act(async () => {
+                fireEvent.click(screen.getByLabelText("Show contact panel"));
+            });
             const toggle = screen.getByLabelText("Hide contact panel");
 
             await act(async () => {

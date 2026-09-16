@@ -11,11 +11,59 @@
 // so the message reads as part of the page rather than a scroll box.
 
 import React from "react";
+import { MoreHorizontalIcon } from "lucide-react";
 import { plainToDisplayHtml } from "@/lib/email/body";
 
 interface EmailBodyProps {
     html?: string | null;
     plain?: string | null;
+}
+
+// ── Quoted history ─────────────────────────────────────────────────────────
+// Every reply carries the whole conversation inside it, so rendering a thread
+// verbatim shows the same text N times and buries the three lines that are
+// actually new. Mail clients collapse that; so do we. The markers below are
+// what the major clients leave behind, plus our own wrapper for plain text.
+const QUOTE_SELECTORS = [
+    ".gmail_quote",
+    ".gmail_quote_container",
+    ".gmail_extra",
+    'blockquote[type="cite"]',
+    ".yahoo_quoted",
+    ".moz-cite-prefix",
+    "#divRplyFwdMsg",
+    "#appendonsend",
+    "[data-warmbly-quote]",
+].join(", ");
+
+const HIDE_QUOTE_CSS = `${QUOTE_SELECTORS} { display: none !important; }`;
+
+// Decides whether the toggle is worth showing. Kept in step with
+// QUOTE_SELECTORS by hand; a DOM parse here would only be thrown away.
+const HAS_QUOTE =
+    /\b(?:gmail_quote|gmail_extra|yahoo_quoted|moz-cite-prefix)\b|id=["'](?:divRplyFwdMsg|appendonsend)["']|<blockquote[^>]+type=["']cite["']|data-warmbly-quote/i;
+
+// The line that starts the quoted tail of a plain-text reply: a `>` quote, an
+// attribution line, or one of the separators Outlook writes.
+const PLAIN_QUOTE_LINE =
+    /^(?:>.*|On\b[\s\S]{0,200}?\bwrote:|-{2,}\s*Original Message\s*-{2,}|-{2,}\s*Forwarded message\s*-{2,}|_{10,}|From:\s.+)$/;
+
+/** Splits plain text into what the sender wrote and the history below it. */
+function splitPlainQuote(text: string): { head: string; quote: string } {
+    const lines = text.replace(/\r\n/g, "\n").split("\n");
+    const at = lines.findIndex((l) => PLAIN_QUOTE_LINE.test(l.trim()));
+    // No marker, or the message is nothing but quote: leave it whole.
+    if (at <= 0) return { head: text, quote: "" };
+    return {
+        head: lines.slice(0, at).join("\n").trimEnd(),
+        quote: lines.slice(at).join("\n"),
+    };
+}
+
+function plainToBody(text: string): string {
+    const { head, quote } = splitPlainQuote(text);
+    if (!quote) return plainToDisplayHtml(text);
+    return `${plainToDisplayHtml(head)}<div data-warmbly-quote>${plainToDisplayHtml(quote)}</div>`;
 }
 
 // Typography for the message document. Deliberately minimal: the message
@@ -54,12 +102,19 @@ const DOCUMENT_ROOT = /^\s*(?:<!--[\s\S]*?-->\s*)*(?:<!doctype\s+html|<html[\s>]
 const HEAD_OPEN = /<head\b[^>]*>/i;
 const HTML_OPEN = /<html\b[^>]*>/i;
 
-const SHELL =
-    `<meta charset="utf-8"><meta name="referrer" content="no-referrer">` +
-    // Every link in the message leaves the dashboard in a new tab.
-    `<base target="_blank"><style>${DOCUMENT_CSS}</style>`;
+function shell(showQuoted: boolean): string {
+    return (
+        `<meta charset="utf-8"><meta name="referrer" content="no-referrer">` +
+        // Every link in the message leaves the dashboard in a new tab.
+        `<base target="_blank"><style>${DOCUMENT_CSS}</style>` +
+        // The quote rule is !important and injected last so it beats the
+        // message's own stylesheet, which is what re-shows it.
+        (showQuoted ? "" : `<style>${HIDE_QUOTE_CSS}</style>`)
+    );
+}
 
-function buildDocument(body: string): string {
+function buildDocument(body: string, showQuoted: boolean): string {
+    const SHELL = shell(showQuoted);
     if (DOCUMENT_ROOT.test(body)) {
         // Our shell goes FIRST in the head, so the message's own stylesheet
         // comes after it and wins on everything but the containment rules,
@@ -74,14 +129,23 @@ function buildDocument(body: string): string {
 export default function EmailBody({ html, plain }: EmailBodyProps) {
     const frameRef = React.useRef<HTMLIFrameElement>(null);
     const [height, setHeight] = React.useState(0);
+    const [showQuoted, setShowQuoted] = React.useState(false);
 
-    const srcDoc = React.useMemo(() => {
+    // The message body, before the shell. Split from srcDoc so toggling the
+    // quote does not re-run the plain-text conversion.
+    const body = React.useMemo(() => {
         const trimmedHtml = (html ?? "").trim();
-        if (trimmedHtml) return buildDocument(trimmedHtml);
+        if (trimmedHtml) return trimmedHtml;
         const trimmedPlain = (plain ?? "").trim();
-        if (trimmedPlain) return buildDocument(plainToDisplayHtml(trimmedPlain));
+        if (trimmedPlain) return plainToBody(trimmedPlain);
         return "";
     }, [html, plain]);
+
+    const hasQuote = React.useMemo(() => HAS_QUOTE.test(body), [body]);
+    const srcDoc = React.useMemo(
+        () => (body ? buildDocument(body, showQuoted) : ""),
+        [body, showQuoted],
+    );
 
     // Late-loading remote images change the document height after onLoad, so
     // measurement repeats until the size settles rather than running once.
@@ -119,17 +183,31 @@ export default function EmailBody({ html, plain }: EmailBodyProps) {
     }
 
     return (
-        <iframe
-            ref={frameRef}
-            title="Message body"
-            srcDoc={srcDoc}
-            onLoad={onLoad}
-            // No allow-scripts: message markup can never run code. allow-popups
-            // (plus escape-to-normal-context) is what lets a link actually open.
-            sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-            referrerPolicy="no-referrer"
-            className="w-full border-0 block"
-            style={{ height: height ? `${height}px` : "80px" }}
-        />
+        <>
+            <iframe
+                ref={frameRef}
+                title="Message body"
+                srcDoc={srcDoc}
+                onLoad={onLoad}
+                // No allow-scripts: message markup can never run code. allow-popups
+                // (plus escape-to-normal-context) is what lets a link actually open.
+                sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+                referrerPolicy="no-referrer"
+                className="w-full border-0 block"
+                style={{ height: height ? `${height}px` : "80px" }}
+            />
+            {hasQuote && (
+                <button
+                    type="button"
+                    onClick={() => setShowQuoted((v) => !v)}
+                    aria-expanded={showQuoted}
+                    title={showQuoted ? "Hide the quoted conversation" : "Show the quoted conversation"}
+                    className="mt-1 h-5 px-1.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 inline-flex items-center gap-1 text-[10.5px] transition-colors"
+                >
+                    <MoreHorizontalIcon className="w-3 h-3" />
+                    {showQuoted ? "Hide quoted text" : "Show quoted text"}
+                </button>
+            )}
+        </>
     );
 }

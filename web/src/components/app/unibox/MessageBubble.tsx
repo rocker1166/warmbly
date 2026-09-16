@@ -21,11 +21,14 @@ import EmailBody from "./EmailBody";
 import useUniboxEmail from "@/lib/api/hooks/app/unibox/useUniboxEmail";
 import type UniboxEmail from "@/lib/api/models/app/unibox/UniboxEmail";
 import { nameFromAddr, wrappedEmail } from "@/lib/helper/emailAddress";
+import { cn } from "@/lib/utils";
 
 interface MessageBubbleProps {
     email: UniboxEmail;
     /** Expanded on mount. The newest message and anything unread open by default. */
     defaultExpanded?: boolean;
+    /** Sent from the connected mailbox, i.e. ours rather than the contact's. */
+    outbound?: boolean;
     onReply?: () => void;
     onForward?: () => void;
 }
@@ -43,6 +46,7 @@ function initials(s: string): string {
 export function MessageBubble({
     email,
     defaultExpanded = false,
+    outbound = false,
     onReply,
     onForward,
 }: MessageBubbleProps) {
@@ -62,7 +66,15 @@ export function MessageBubble({
     const snippet = email.snippet ?? "";
 
     return (
-        <article className={expanded ? "group px-4 sm:px-5 py-4" : "group px-4 sm:px-5 py-2.5"}>
+        // Direction gets a rendering of its own: a tinted rail down the left
+        // edge, so ours and theirs are told apart without reading addresses.
+        <article
+            className={cn(
+                "group border-l-2 pl-[14px] sm:pl-[18px] pr-4 sm:pr-5",
+                expanded ? "py-4" : "py-2.5",
+                outbound ? "border-l-sky-400 bg-sky-50/30" : "border-l-transparent",
+            )}
+        >
             {/* Not a <button>: the reply/forward controls live inside it. */}
             <header
                 role="button"
@@ -77,7 +89,12 @@ export function MessageBubble({
                     }
                 }}
             >
-                <div className="size-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-[10.5px] font-semibold shrink-0">
+                <div
+                    className={cn(
+                        "size-7 rounded-full flex items-center justify-center text-[10.5px] font-semibold shrink-0",
+                        outbound ? "bg-sky-100 text-sky-700" : "bg-slate-100 text-slate-600",
+                    )}
+                >
                     {initials(email.from)}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -85,6 +102,11 @@ export function MessageBubble({
                         <span className="text-[12.5px] font-semibold text-slate-900 truncate">
                             {name}
                         </span>
+                        {outbound && (
+                            <span className="shrink-0 px-1 rounded bg-sky-100 text-sky-700 text-[9.5px] font-semibold uppercase tracking-wide">
+                                You
+                            </span>
+                        )}
                         {addr && expanded && (
                             <span className="text-[11px] text-slate-400 truncate">
                                 {addr}

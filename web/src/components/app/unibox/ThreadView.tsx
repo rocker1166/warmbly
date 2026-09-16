@@ -30,6 +30,7 @@ import {
 
 import { MessageBubble } from "./MessageBubble";
 import { ReplyComposer, type ReplyMode, type ReplySeed } from "./ReplyComposer";
+import { loadReplyDraft, replyDraftKey } from "@/lib/unibox/replyDraft";
 import { useOutboxStore } from "@/hooks/useOutboxStore";
 import AgentDraftCard from "./AgentDraftCard";
 import ResourceViewers from "@/components/app/presence/ResourceViewers";
@@ -177,8 +178,9 @@ export function ThreadView({ threadId, emailId }: ThreadViewProps) {
   // CRM context rail (right side). From lg up it is a static rail beside the
   // thread and its open/closed state is a persisted preference: this view is
   // keyed on the thread id, so component state would put the rail back over
-  // every conversation the reader opens. It still starts open, which is the
-  // default #402/568bdb48 settled on; closing it now sticks (#473).
+  // every conversation the reader opens. It starts CLOSED: it is a lookup, not
+  // something read on every thread, and opening it unasked takes the width the
+  // message needs. Either state sticks once chosen (#473).
   //
   // Below lg the same panel is an overlay drawer on top of the thread, which
   // is not something to restore on arrival, so there it is plain local state
@@ -232,6 +234,22 @@ export function ThreadView({ threadId, emailId }: ThreadViewProps) {
     setReplyState(null);
     setReplySeed(null);
   }, [threadId]);
+
+  // A half-written reply survives in localStorage (lib/unibox/replyDraft), so
+  // bring its composer back on arrival instead of leaving the draft buried
+  // behind a Reply click. Once per thread: reopening it after the reader
+  // closes it would trap them.
+  const reopenedFor = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const msgs = q.data?.data ?? [];
+    const last = msgs[msgs.length - 1];
+    if (!last || reopenedFor.current === threadId) return;
+    reopenedFor.current = threadId;
+    const mode = (["reply", "forward"] as ReplyMode[]).find((m) =>
+      loadReplyDraft(replyDraftKey(threadId, last.id, m)),
+    );
+    if (mode) setReplyState({ messageId: last.id, mode });
+  }, [threadId, q.data]);
 
   // A cancelled undo-send reply for this thread reopens the composer with
   // the exact content that was about to go out.
@@ -687,6 +705,9 @@ export function ThreadView({ threadId, emailId }: ThreadViewProps) {
             // still unread. Older read messages stay collapsed so a long
             // thread does not fetch every body at once.
             defaultExpanded={i === messages.length - 1 || !email.is_seen}
+            outbound={
+              !!mailboxEmail && bareEmail(email.from).toLowerCase() === mailboxEmail
+            }
             onReply={() => openReply(email.id, "reply")}
             onForward={() => openReply(email.id, "forward")}
           />
