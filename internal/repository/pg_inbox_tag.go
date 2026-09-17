@@ -49,6 +49,11 @@ type InboxTagRepository interface {
 	// ThreadStates backs the follow-up sweep: who spoke last, when, and how far
 	// the thread ever got.
 	ThreadStates(ctx context.Context, orgID uuid.UUID, since time.Time, limit int) ([]ThreadFollowUpState, error)
+
+	// ClearUnreadable drops the verdicts that came back under the confidence
+	// floor, so they are classified again. Used after the criteria change:
+	// a stored verdict is only as good as the wording that produced it.
+	ClearUnreadable(ctx context.Context, orgID uuid.UUID) ([]string, error)
 }
 
 type inboxTagRepository struct {
@@ -388,4 +393,36 @@ func (r *inboxTagRepository) ThreadStates(ctx context.Context, orgID uuid.UUID, 
 		out = append(out, st)
 	}
 	return out, rows.Err()
+}
+
+// ClearUnreadable removes the needs-review verdicts for a workspace and returns
+// the threads they were on, so their needs-review label can be cleared too.
+//
+// This is the retune path. Relevance weights can be re-applied to stored
+// answers for free, but a change to what the model is ASKED invalidates the
+// answer itself, and the only way to fix that is to ask again. Scoped to the
+// verdicts that were under the floor, because those are the ones a wording
+// change is meant to rescue; a confident answer is left alone.
+func (r *inboxTagRepository) ClearUnreadable(ctx context.Context, orgID uuid.UUID) ([]string, error) {
+	rows, err := r.db.Query(ctx, `
+		DELETE FROM inbox_tag_results
+		WHERE organization_id = $1 AND needs_review
+		RETURNING thread_id
+	`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var threads []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		if t != "" {
+			threads = append(threads, t)
+		}
+	}
+	return threads, rows.Err()
 }

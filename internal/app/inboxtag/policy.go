@@ -114,14 +114,21 @@ const (
 )
 
 var intentCriteria = map[string]string{
-	IntentAgreed:           "Clearly agrees to the partnership, call, or next step",
+	// The boundary with scheduling is stated explicitly, because "we are
+	// interested, can we make a quick call?" is both an agreement and a request
+	// to talk, and it is the single most valuable reply in cold outreach. Left
+	// implicit, the model split 0.52/0.46 between the two and the answer fell
+	// under the floor, so the best message in the inbox ended up with no intent
+	// at all. The rule is now: a named time makes it scheduling, no time makes
+	// it agreement.
+	IntentAgreed:           "Agrees to the partnership, call, or next step. Use this when they say yes or ask to talk without naming a specific time",
 	IntentWantsInfo:        "Open, but asking questions before deciding",
 	IntentWantsPricing:     "Specifically asking about price, terms, or commercials",
 	IntentNotNow:           "Open in principle, says the timing is wrong",
 	IntentNotInterested:    "Declines, without demanding removal",
 	IntentWrongPerson:      "Says they are not the right contact, or names someone else",
 	IntentOptOut:           "Demands removal, complains, or threatens",
-	IntentScheduling:       "Proposes, confirms, or changes a specific time to meet or talk",
+	IntentScheduling:       "Names an exact time, calendar date, or day of the week to meet or talk, or confirms or changes one that was named. A vague period such as \"next week\" or \"sometime soon\" is not exact enough; use agreed for those",
 	IntentInProgress:       "Reports progress on something already agreed, or says their side is done",
 	IntentQuestionAnswered: "Answers a question we asked, or supplies information we requested",
 	// Deliberate: somewhere to put a genuinely ambiguous reply, so the model is

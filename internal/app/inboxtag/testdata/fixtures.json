@@ -29,7 +29,7 @@
   "body": "Sounds promising. Can we jump on a quick call next week to talk it through? Here is my calendar: https://cal.com/example/30min",
   "previous": "Would you be open to a partnership?",
   "expect_kind": "human_reply",
-  "expect_intent": "scheduling"
+  "expect_intent": "agreed"
  },
  {
   "name": "not_now",
@@ -182,5 +182,13 @@
   "previous": "Which platform are you on, and roughly what list size?",
   "expect_kind": "human_reply",
   "expect_intent": "question_answered"
+ },
+ {
+  "name": "interested_asks_for_call",
+  "subject": "Re: DynoWeb x GrowGood \u2014 collab",
+  "body": "Hi,\n\nWe are interested in that. Can we make a quick call about it?\n\nThanks",
+  "previous": "Would you be open to a collaboration between our apps?",
+  "expect_kind": "human_reply",
+  "expect_intent": "agreed"
  }
 ]

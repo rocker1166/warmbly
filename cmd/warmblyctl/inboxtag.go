@@ -57,6 +57,7 @@ func runInboxTagBackfill(ctx context.Context, args []string) error {
 	days := fs.Int("days", 30, "how far back to go")
 	limit := fs.Int("limit", 200, "most messages to classify in this run")
 	dryRun := fs.Bool("dry-run", false, "list what would be classified and call nothing")
+	redo := fs.Bool("redo-unreadable", false, "first clear the verdicts that came back under the confidence floor, so a criteria change can rescue them")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -96,6 +97,14 @@ func runInboxTagBackfill(ctx context.Context, args []string) error {
 		categories,
 		true,
 	)
+
+	if *redo && !*dryRun {
+		n, rerr := svc.RedoUnreadable(ctx, orgID)
+		if rerr != nil {
+			return fmt.Errorf("clearing unreadable verdicts: %w", rerr)
+		}
+		fmt.Printf("Cleared %d verdict(s) that were under the confidence floor; they will be classified again.\n", n)
+	}
 
 	since := time.Now().AddDate(0, 0, -*days)
 

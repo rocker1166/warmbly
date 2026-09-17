@@ -489,3 +489,34 @@ func (s *Service) SweepFollowUps(ctx context.Context, orgID uuid.UUID, since tim
 	}
 	return p, nil
 }
+
+// RedoUnreadable re-classifies the messages whose verdict came back under the
+// confidence floor.
+//
+// Changing what the model is asked makes every stored answer to the old
+// question stale, and unlike a weight change there is no way to recompute it
+// offline: the answer has to be asked again. Bounded to the under-floor rows,
+// which is where a wording change actually helps.
+//
+// Returns how many verdicts were cleared. The caller re-runs the backfill,
+// which picks them up because they are no longer in the results table.
+func (s *Service) RedoUnreadable(ctx context.Context, orgID uuid.UUID) (int, error) {
+	if !s.Enabled() {
+		return 0, errors.New("inbox tagging is not enabled on this instance")
+	}
+	threads, err := s.repo.ClearUnreadable(ctx, orgID)
+	if err != nil {
+		return 0, err
+	}
+	// The needs-review label has to go with the verdict, or a thread that is
+	// about to be classified confidently still wears the flag saying nobody
+	// could read it.
+	if s.categories != nil {
+		for _, threadID := range threads {
+			if err := s.categories.SyncExclusiveLabels(ctx, orgID, threadID, []string{LabelNeedsReview}, ""); err != nil {
+				log.Warn().Err(err).Str("thread_id", threadID).Msg("inbox tagging: needs-review label not cleared")
+			}
+		}
+	}
+	return len(threads), nil
+}
